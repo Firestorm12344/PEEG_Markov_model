@@ -153,6 +153,21 @@ def cycle_prob_from_cumulative_hazard(p_cum: float, period_days: int, cycle_days
     return 1 - math.exp(-daily_hazard * cycle_days)
 
 
+def split_cycle_followup_days(elapsed_days: float, cycle_days: float, supported_days: float = 180.0) -> tuple[float, float]:
+    """Split a cycle into days inside and outside the supported follow-up window."""
+    within_followup = max(0.0, min(cycle_days, supported_days - elapsed_days))
+    beyond_followup = max(0.0, cycle_days - within_followup)
+    return within_followup, beyond_followup
+
+
+def combine_sequential_probabilities(*probabilities: float) -> float:
+    """Combine sequential event probabilities from non-overlapping time windows."""
+    survival = 1.0
+    for probability in probabilities:
+        survival *= 1 - probability
+    return 1 - survival
+
+
 def run_markov(strategy: str, horizon_days: int, params: dict) -> dict:
     p = complete_params(params)
     cycles = build_cycle_schedule(horizon_days)
@@ -175,14 +190,7 @@ def run_markov(strategy: str, horizon_days: int, params: dict) -> dict:
 
     # Readmission probabilities (daily hazard from 180-day probabilities)
     p_readmit_daily_nd = -math.log(1 - p["p_readmit_180_no_delirium"]) / 180
-    p_readmit_daily_d = -math.log(1 - p["p_readmit_delirium_peeg"]) / 180 if "p_readmit_delirium_peeg" in p else -math.log(1 - p1_from_or(p["or_readmit_delirium"], p["p_readmit_180_no_delirium"])) / 180
-
-    # Convert 180-day cumulative probabilities to daily hazards, then to cycle-specific probabilities
-    p_mort_cycle_nd = cycle_prob_from_cumulative_hazard(p["p_mort_180_no_delirium"], 180, cycles[0]) if cycles else 0
-    p_mort_cycle_d = cycle_prob_from_cumulative_hazard(p["p_mort_180_delirium"], 180, cycles[0]) if cycles else 0
-    
-    # Background mortality cycles depend on cycle length
-    p_bg_cycle = 1 - (1 - p["annual_background_mortality_after_6m"]) ** (cycles[0] / 365.0) if cycles else 0
+    p_readmit_daily_d = -math.log(1 - p["p_readmit_180_delirium"]) / 180
 
     elapsed_days = 0
     for cycle_idx, cycle_days in enumerate(cycles):
@@ -191,16 +199,26 @@ def run_markov(strategy: str, horizon_days: int, params: dict) -> dict:
         cycle_midpoint_days = elapsed_days + cycle_days / 2.0
         discount = 1 / ((1 + p["annual_discount"]) ** (cycle_midpoint_days / 365.0))
 
-        # Readmission probabilities for this cycle
-        p_readmit_cycle_nd = 1 - math.exp(-p_readmit_daily_nd * cycle_days)
-        p_readmit_cycle_d = 1 - math.exp(-p_readmit_daily_d * cycle_days)
+        followup_cycle_days, post_followup_cycle_days = split_cycle_followup_days(elapsed_days, cycle_days)
+        if followup_cycle_days > 0:
+            # Delirium-conditioned mortality/readmission are only supported through day 180.
+            p_readmit_cycle_nd = 1 - math.exp(-p_readmit_daily_nd * followup_cycle_days)
+            p_readmit_cycle_d = 1 - math.exp(-p_readmit_daily_d * followup_cycle_days)
+            p_mort_cycle_nd = cycle_prob_from_cumulative_hazard(p["p_mort_180_no_delirium"], 180, followup_cycle_days)
+            p_mort_cycle_d = cycle_prob_from_cumulative_hazard(p["p_mort_180_delirium"], 180, followup_cycle_days)
+        else:
+            p_readmit_cycle_nd = 0.0
+            p_readmit_cycle_d = 0.0
+            p_mort_cycle_nd = 0.0
+            p_mort_cycle_d = 0.0
+
+        if post_followup_cycle_days > 0:
+            p_bg_cycle = 1 - (1 - p["annual_background_mortality_after_6m"]) ** (post_followup_cycle_days / 365.0)
+            p_mort_cycle_nd = combine_sequential_probabilities(p_mort_cycle_nd, p_bg_cycle)
+            p_mort_cycle_d = combine_sequential_probabilities(p_mort_cycle_d, p_bg_cycle)
 
         # First cycle (acute phase): route from acute states to home/rehab
         if cycle_idx == 0:
-            # Recalculate mortality probabilities for the first cycle specifically
-            p_mort_cycle_nd = cycle_prob_from_cumulative_hazard(p["p_mort_180_no_delirium"], 180, cycle_days)
-            p_mort_cycle_d = cycle_prob_from_cumulative_hazard(p["p_mort_180_delirium"], 180, cycle_days)
-            
             surv_nd = prev[IDX["acute_no_delirium"]] * (1 - p_mort_cycle_nd)
             surv_d = prev[IDX["acute_delirium"]] * (1 - p_mort_cycle_d)
 
@@ -228,6 +246,7 @@ def run_markov(strategy: str, horizon_days: int, params: dict) -> dict:
         else:
             # Subsequent cycles: follow home/rehab population with death, readmission
             # Home states with possible readmission or death
+            cycle_readmits = 0.0
             home_states = [
                 ("home_no_delirium_history", p_readmit_cycle_nd, p_mort_cycle_nd, utility_home_by_days(elapsed_days, p)),
                 ("home_delirium_history", p_readmit_cycle_d, p_mort_cycle_d, utility_home_by_days(elapsed_days, p)),
@@ -246,11 +265,12 @@ def run_markov(strategy: str, horizon_days: int, params: dict) -> dict:
                 new[IDX["death"]] += deaths
                 new[IDX[state_name]] += survivors
                 
+                cycle_readmits += readmits
                 total_readmit += readmits
                 total_deaths += deaths
                 total_qaly += survivors * utility * (cycle_days / 365.0) * discount
             
-            # Rehab states with possible discharge back to home, readmission, or death
+            # Rehab states can die or be readmitted; otherwise they remain in facility care.
             rehab_states = [
                 ("rehab_no_delirium_history", p_readmit_cycle_nd, p_mort_cycle_nd, p["u_rehab_4mo"]),
                 ("rehab_delirium_history", p_readmit_cycle_d, p_mort_cycle_d, p["u_rehab_4mo"]),
@@ -267,6 +287,7 @@ def run_markov(strategy: str, horizon_days: int, params: dict) -> dict:
                 new[IDX["death"]] += deaths
                 new[IDX[state_name]] += survivors
                 
+                cycle_readmits += readmits
                 total_readmit += readmits
                 total_deaths += deaths
                 total_qaly += survivors * utility * (cycle_days / 365.0) * discount
@@ -287,7 +308,7 @@ def run_markov(strategy: str, horizon_days: int, params: dict) -> dict:
             total_qaly += readmit_survivors * readmit_utility * (cycle_days / 365.0) * discount
             
             # Apply readmission cost for each individual who was readmitted in this cycle
-            total_cost += readmits * params.get("cost_readmission", 0)  # Default 0 if not specified
+            total_cost += cycle_readmits * p["cost_readmission"]
 
         trace[cycle_idx + 1] = new
         elapsed_days += cycle_days
@@ -314,7 +335,7 @@ if __name__ == "__main__":
     df_results = pd.DataFrame(rows)
     print(df_results)
     
-    # Save to CSV with the new naming
-    csv_path = r"c:\Users\juanz\OneDrive\Desktop\Universidad\Markov Model\model2_corrected_outputs_180d_1y.csv"
+    # Save to the repository root so the script works cross-platform.
+    csv_path = "model2_corrected_outputs_180d_1y.csv"
     df_results.to_csv(csv_path, index=False)
     print(f"\nResults saved to: {csv_path}")
