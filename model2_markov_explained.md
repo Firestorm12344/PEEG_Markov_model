@@ -1,143 +1,148 @@
-# Modelo 2 corregido explicado en lenguaje simple
+# Corrected Model 2 Explained in Simple Terms
 
-## 1) ¿De qué trata el estudio?
-El estudio pregunta si usar pEEG (electroencefalografía procesada durante la anestesia)
-vale la pena en pacientes mayores con cirugía de fractura de cadera.
+## 1) What is this study about?
+This study evaluates whether using pEEG (processed electroencephalography during anesthesia) is worth it for older adults undergoing hip fracture surgery.
 
-La idea clínica es esta:
-- si la anestesia se guía mejor con pEEG,
-- podría haber menos delirium postoperatorio,
-- y si hay menos delirium,
-- entonces podría haber menos rehabilitación institucional, menos mortalidad y mejor calidad de vida.
+The clinical idea is:
+- if anesthesia is better guided with pEEG,
+- there may be less postoperative delirium,
+- and with less delirium,
+- there may be fewer institutional rehabilitation stays, lower mortality, and better quality of life.
 
-En economía de la salud eso se resume en dos resultados:
-- **costos** en USD
-- **QALYs**, que son años de vida ajustados por calidad
+In health economics, this is summarized by two main outcomes:
+- **costs** in USD
+- **QALYs** (quality-adjusted life years)
 
 ---
 
-## 2) ¿Qué es un modelo de Markov?
-Un modelo de Markov es un modelo que sigue a una cohorte de pacientes en el tiempo.
-En cada ciclo, cada paciente puede quedarse en su estado o pasar a otro estado.
+## 2) What is a Markov model?
+A Markov model follows a cohort of patients over time.
+At each cycle, each patient can stay in the same state or move to another state.
 
-Aquí los estados son:
-- postoperatorio sin delirium
-- postoperatorio con delirium
-- recuperación en casa
-- recuperación en rehabilitación
-- muerte
+In this model, the health states include:
+- acute postoperative without delirium
+- acute postoperative with delirium
+- home recovery
+- rehabilitation recovery
+- readmission
+- death
 
-Cada mes el modelo pregunta:
-- ¿sigue vivo?
-- ¿está en casa o en rehab?
-- ¿qué utilidad tiene ese estado?
-- ¿qué costo genera?
+At each cycle the model asks:
+- is the patient still alive?
+- are they at home, in rehab, or readmitted?
+- what utility does that state have?
+- what cost does that state generate?
 
-Entonces el modelo va sumando:
-- costos
+Then the model accumulates:
+- costs
 - QALYs
-- muertes
-- altas a rehabilitación
+- deaths
+- rehab discharges
 
-No sigue a una persona real una por una.
-Sigue a una **cohorte promedio** de pacientes.
+The model does not track individual patients one by one.
+It follows an average cohort of patients.
 
 ---
 
-## 3) ¿Qué hace el código?
-### A. Define los parámetros
-Se guardan probabilidades, costos y utilidades:
-- probabilidad de delirium
-- riesgo de muerte
-- probabilidad de rehab
-- costo del delirium
-- costo por caso de pEEG
-- utilidades para calcular QALYs
+## 3) What does the code do?
 
-### B. Convierte OR a probabilidad
-Si un paper te da odds ratio, el código usa:
+### A. Define parameters
+The code stores the model parameters, such as:
+- delirium probability
+- mortality risk
+- rehab probability
+- delirium episode cost
+- pEEG per-case cost
+- state utilities for QALY calculation
+
+### B. Convert OR to probability
+If a study reports an odds ratio, the code converts it to an absolute probability using:
 
 p1 = OR * p0 / (1 - p0 + OR * p0)
 
-Eso sirve para convertir un efecto relativo a una probabilidad absoluta.
+This converts a relative effect into an absolute risk.
 
-### C. Corre el Markov
-La función `run_markov()`:
-1. arma la cohorte inicial
-2. distribuye pacientes según tengan delirium o no
-3. en el primer ciclo calcula muertes y paso a casa/rehab
-4. en los ciclos siguientes acumula QALYs y muertes
-5. devuelve costo total y QALYs por paciente
+### C. Run the Markov model
+The function `run_markov()`:
+1. sets up the initial cohort distribution
+2. assigns patients to delirium or no delirium states
+3. in the first cycle, calculates deaths and discharge to home or rehab
+4. in later cycles, accumulates QALYs, readmissions, and deaths
+5. returns total cost and QALYs per patient
 
-### D. Compara estrategias
-Se corre el modelo para:
-- anestesia usual
-- anestesia guiada con pEEG
+### D. Compare strategies
+The model compares:
+- usual anesthesia
+- pEEG-guided anesthesia
 
-Luego se calcula:
-- costo incremental = costo pEEG - costo usual
-- QALY incremental = QALY pEEG - QALY usual
+Then it calculates:
+- incremental cost = cost_pEEG - cost_usual
+- incremental QALY = qaly_pEEG - qaly_usual
 
-Si:
-- costo incremental < 0
-- QALY incremental > 0
+If:
+- incremental cost < 0
+- incremental QALY > 0
 
-entonces pEEG es dominante.
-
----
-
-## 4) ¿Qué corregí respecto al modelo anterior?
-El gráfico CEAC anterior salía plano en 1.0.
-Eso significaba que en prácticamente todas las simulaciones pEEG era perfecto.
-
-Para corregirlo hice 3 cambios:
-1. usé un efecto más conservador para pEEG:
-   RR = 0.81 en vez del efecto absoluto muy grande
-2. amplié la incertidumbre en la PSA
-3. agregué un costo por caso de pEEG más realista como escenario de implementación
-   (sensor + monitor amortizado + overhead)
-
-Así el CEAC deja de ser artificialmente perfecto.
+then pEEG is dominant.
 
 ---
 
-## 5) ¿Cómo leer los resultados?
-- **USD**: costo esperado por paciente
-- **QALY**: beneficio en salud ajustado por calidad
+## 4) What analysis is performed in this project?
+This project compares two anesthesia strategies for older adults with hip fracture:
+- usual anesthesia
+- pEEG-guided anesthesia
+
+The main model is a deterministic Markov model that follows a cohort through discrete cycles. Health states include acute postoperative with or without delirium, home recovery, rehabilitation recovery, readmission, and death.
+
+The analysis includes:
+- a 180-day base-case horizon aligned with typical clinical follow-up
+- a 365-day scenario to evaluate one-year outcomes
+- costs, QALYs, delirium cases, rehab discharges, deaths, and readmissions
+
+A complementary sensitivity script (`sensitivity_analysis.py`) also:
+- runs probabilistic sensitivity analysis (PSA) using appropriate distributions for probabilities, costs, and ratios
+- calculates NMB/INB instead of ICER for stability
+- generates CEAC and tornado diagrams
+
+---
+
+## 5) How to read the results?
+- **USD**: expected cost per patient
+- **QALY**: health benefit adjusted for quality
 - **Incremental**:
-  - negativo en costo = ahorra dinero
-  - positivo en QALY = mejora salud
+  - negative cost difference = saves money
+  - positive QALY difference = improves health
 
 ---
 
-## 6) ¿Qué es el tornado?
-Es un análisis de sensibilidad de una vía.
-Se mueve un parámetro a un valor bajo y alto para ver cuánto cambia el resultado económico.
+## 6) What is a tornado diagram?
+A tornado diagram is a one-way sensitivity analysis.
+It varies one parameter at a low and high value to see how much the economic result changes.
 
-Los parámetros que más mueven el resultado son los más importantes.
-
----
-
-## 7) ¿Qué es la PSA?
-PSA = probabilistic sensitivity analysis
-
-No usa un solo valor fijo por parámetro.
-Usa distribuciones:
-- Beta para probabilidades
-- Gamma para costos
-- Lognormal para OR
-
-Luego corre miles de simulaciones.
-
-Con eso se construyen:
-- el cost-effectiveness plane
-- la CEAC
+The parameters that move the result the most are the most important.
 
 ---
 
-## 8) Advertencia metodológica
-Este archivo corregido es útil para entender el modelo y tener una base de trabajo.
-Pero si quieres paper fuerte, todavía conviene:
-- validar costos locales reales de pEEG
-- decidir si usarás 180 días como base-case principal
-- justificar mejor la extensión a 1, 5 y 10 años
+## 7) What is PSA?
+PSA stands for probabilistic sensitivity analysis.
+
+It does not use a single fixed value for each parameter.
+It uses distributions such as:
+- Beta for probabilities
+- Gamma for costs
+- Lognormal for odds ratios and relative ratios
+
+Then it runs many simulations.
+
+This produces:
+- the cost-effectiveness plane
+- the CEAC (cost-effectiveness acceptability curve)
+
+---
+
+## 8) Methodological note
+This explanation is useful to understand the model and provides a working foundation.
+For a stronger paper, it is still advisable to:
+- validate local pEEG costs
+- justify the 180-day base-case choice
+- justify any extension to 1, 5, or 10 years
