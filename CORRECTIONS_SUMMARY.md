@@ -86,26 +86,26 @@ tornado_data.append({
 - Confusing for paper readers
 
 **AFTER (CLEAR & STANDARD):**
-- **Base Case: 365 days (1 year)**
-  - Standard in economic evaluation
-  - Matches clinical follow-up period
+- **Base Case: 180 days**
+  - Best aligned with the supported delirium, discharge, rehab, readmission, and mortality evidence window
+  - Primary decision horizon for the paper
   
-- **Scenario: 3650 days (10 years)**
-  - Long-term extrapolation
-  - Shows durability of benefit
-  - Clearly labeled as separate scenario
+- **Scenario: 365 days (1 year)**
+  - Optional extension beyond the supported 180-day base case
+  - Uses background mortality after day 180
+  - Avoids unsupported 5-year and 10-year extrapolations
 
 ---
 
-## 📊 Key Results (1-Year Base Case)
+## 📊 Key Results (180-Day Base Case)
 
 | Metric | Value | Interpretation |
 |--------|-------|-----------------|
-| **Mean INB** | $326 | Average net benefit per patient at $50K/QALY threshold |
-| **Median INB** | $332 | Median is slightly higher (robust to outliers) |
-| **Prob CE (>$50K/QALY)** | 93.1% | Very likely to be cost-effective |
-| **Prob CE (>$100K/QALY)** | ~95% | Even more likely at higher threshold |
-| **Dominance (lower cost + more QALYs)** | 91.1% | pEEG is cheaper AND more effective in 91% of PSA iterations |
+| **Mean INB** | $248 | Average net benefit per patient at $50K/QALY threshold |
+| **Median INB** | $252 | Median remains slightly higher than the mean |
+| **Prob CE (>$50K/QALY)** | 91.2% | Very likely to be cost-effective |
+| **Prob CE (>$100K/QALY)** | ~93% | Still highly likely at higher thresholds |
+| **Dominance (lower cost + more QALYs)** | 89.9% | pEEG is cheaper AND more effective in about 90% of PSA iterations |
 
 ---
 
@@ -114,16 +114,16 @@ tornado_data.append({
 The corrected figure (`sensitivity_analysis_CORRECTED.png`) shows:
 
 ### Row 1: CE Planes
-- **Left:** 1-year base case (cloud of 1,000 PSA points)
-- **Right:** 10-year scenario expansion
+- **Left:** 180-day base case (cloud of 1,000 PSA points)
+- **Right:** 1-year scenario expansion
 - Most points in **SE quadrant** = pEEG lower cost + more QALYs (dominant)
 
 ### Row 2: Decision Metrics
-- **Left:** INB distribution (mean=$326, clearly positive)
-- **Right:** CEAC curves (both horizons ~93-95% cost-effective at common thresholds)
+- **Left:** INB distribution (mean=$248, clearly positive)
+- **Right:** CEAC curves (both horizons remain >90% cost-effective at common thresholds)
 
 ### Row 3: Tornado (INB-based)
-- **Top sensitive:** rr_delirium_peeg (+$1,015 range)
+- **Top sensitive:** rr_delirium_peeg (+$838 range)
   - Reflects treatment effect uncertainty
   - If pEEG less effective (higher RR), still marginally beneficial
   
@@ -202,6 +202,6 @@ The corrected analysis is now:
 - ✅ **Computationally robust** (NMB instead of ICER)
 - ✅ **Publication-ready** (ISPOR/NICE compliant)
 - ✅ **Clearly interpretable** (linear tornado, stable CEAC)
-- ✅ **Consistent horizons** (1 year base, 10 year scenario)
+- ✅ **Consistent horizons** (180-day base, 1-year scenario)
 
-**Result:** pEEG is highly cost-effective, with 93% probability at standard US thresholds.
+**Result:** pEEG remains highly cost-effective, with 91% probability at standard US thresholds in the 180-day base case.

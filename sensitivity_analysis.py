@@ -16,15 +16,14 @@ CRITICAL CORRECTIONS:
    - INB es monotónico
 
 4. ✅ Horizonte consistente:
-   - Base case: 365 días (1 año)
-   - Scenario: 3650 días (10 años)
+   - Base case: 180 días
+   - Scenario: 365 días (1 año)
 """
 
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from scipy.stats import beta, gamma
-from model2_corrected_markov import run_markov, BASE, complete_params
+from model2_corrected_markov import run_markov, BASE
 import math
 
 # Set random seed for reproducibility
@@ -72,7 +71,7 @@ def convert_cv_to_alpha_beta(mean, cv):
     return alpha, beta_param
 
 
-def one_way_sensitivity_analysis_inb(horizon_days=365, tornado_range=0.25, wtp=WTP_THRESHOLD):
+def one_way_sensitivity_analysis_inb(horizon_days=180, tornado_range=0.25, wtp=WTP_THRESHOLD):
     """
     One-way sensitivity analysis using Incremental Net Benefit (INB).
     
@@ -124,7 +123,7 @@ def one_way_sensitivity_analysis_inb(horizon_days=365, tornado_range=0.25, wtp=W
     return tornado_df, base_inb
 
 
-def probabilistic_sensitivity_analysis(n_iterations=1000, horizon_days=365, wtp=WTP_THRESHOLD):
+def probabilistic_sensitivity_analysis(n_iterations=1000, horizon_days=180, wtp=WTP_THRESHOLD):
     """
     PSA with CORRECT probability distributions:
     - Probabilities → Beta (bounded [0, 1])
@@ -203,65 +202,65 @@ def probabilistic_sensitivity_analysis(n_iterations=1000, horizon_days=365, wtp=
     return results_psa
 
 
-def generate_plots_corrected(horizon_365d_results, horizon_3650d_results):
+def generate_plots_corrected(horizon_180d_results, horizon_365d_results):
     """
     Generate publication-ready figures:
-    - CE Plane (365d, 3650d)
+    - CE Plane (180d, 365d)
     - INB distribution & CEAC (using NMB)
     - Tornado (INB-based, not ICER)
     """
     fig = plt.figure(figsize=(16, 12))
     gs = fig.add_gridspec(3, 2, hspace=0.3, wspace=0.3)
     
-    # ============ ROW 1: CE PLANES (365d and 3650d) ============
+    # ============ ROW 1: CE PLANES (180d and 365d) ============
     ax1 = fig.add_subplot(gs[0, 0])
-    ax1.scatter(horizon_365d_results['qaly_diff'], 
-                horizon_365d_results['cost_diff'], 
-                alpha=0.5, s=20, label='1-year horizon')
+    ax1.scatter(horizon_180d_results['qaly_diff'], 
+                horizon_180d_results['cost_diff'], 
+                alpha=0.5, s=20, label='180-day base case')
     ax1.axhline(y=0, color='k', linestyle='--', alpha=0.3)
     ax1.axvline(x=0, color='k', linestyle='--', alpha=0.3)
     ax1.set_xlabel('ΔQALYs (pEEG vs Usual)')
     ax1.set_ylabel('ΔCost ($)')
-    ax1.set_title('Cost-Effectiveness Plane - 1 Year (Base Case)')
+    ax1.set_title('Cost-Effectiveness Plane - 180 Days (Base Case)')
     ax1.grid(True, alpha=0.3)
     ax1.legend()
     
     ax2 = fig.add_subplot(gs[0, 1])
-    ax2.scatter(horizon_3650d_results['qaly_diff'], 
-                horizon_3650d_results['cost_diff'], 
-                alpha=0.5, s=20, color='orange', label='10-year scenario')
+    ax2.scatter(horizon_365d_results['qaly_diff'], 
+                horizon_365d_results['cost_diff'], 
+                alpha=0.5, s=20, color='orange', label='1-year scenario')
     ax2.axhline(y=0, color='k', linestyle='--', alpha=0.3)
     ax2.axvline(x=0, color='k', linestyle='--', alpha=0.3)
     ax2.set_xlabel('ΔQALYs (pEEG vs Usual)')
     ax2.set_ylabel('ΔCost ($)')
-    ax2.set_title('Cost-Effectiveness Plane - 10 Years (Scenario)')
+    ax2.set_title('Cost-Effectiveness Plane - 1 Year (Scenario)')
     ax2.grid(True, alpha=0.3)
     ax2.legend()
     
     # ============ ROW 2: NMB & CEAC (combined) ============
     ax3 = fig.add_subplot(gs[1, 0])
-    ax3.hist(horizon_365d_results['inb'], bins=50, edgecolor='black', alpha=0.7, label='1-year')
+    ax3.hist(horizon_180d_results['inb'], bins=50, edgecolor='black', alpha=0.7, label='180-day')
     ax3.axvline(x=0, color='red', linestyle='--', linewidth=2, label='INB = 0 (threshold)')
-    prob_peeg_ce = np.mean(np.array(horizon_365d_results['inb']) > 0)
+    prob_peeg_ce = np.mean(np.array(horizon_180d_results['inb']) > 0)
     ax3.set_xlabel('Incremental Net Benefit ($)')
     ax3.set_ylabel('Frequency')
-    ax3.set_title(f'INB Distribution - 1 Year (Prob pEEG CE: {prob_peeg_ce:.1%})')
+    ax3.set_title(f'INB Distribution - 180 Days (Prob pEEG CE: {prob_peeg_ce:.1%})')
     ax3.legend()
     ax3.grid(True, alpha=0.3, axis='y')
     
     ax4 = fig.add_subplot(gs[1, 1])
     wtp_thresholds = np.linspace(0, 150000, 100)
-    ceac_1y = []
-    ceac_10y = []
+    ceac_180d = []
+    ceac_365d = []
     
     for wtp in wtp_thresholds:
-        inb_1y = np.array(horizon_365d_results['qaly_diff']) * wtp - np.array(horizon_365d_results['cost_diff'])
-        inb_10y = np.array(horizon_3650d_results['qaly_diff']) * wtp - np.array(horizon_3650d_results['cost_diff'])
-        ceac_1y.append(np.mean(inb_1y > 0))
-        ceac_10y.append(np.mean(inb_10y > 0))
+        inb_180d = np.array(horizon_180d_results['qaly_diff']) * wtp - np.array(horizon_180d_results['cost_diff'])
+        inb_365d = np.array(horizon_365d_results['qaly_diff']) * wtp - np.array(horizon_365d_results['cost_diff'])
+        ceac_180d.append(np.mean(inb_180d > 0))
+        ceac_365d.append(np.mean(inb_365d > 0))
     
-    ax4.plot(wtp_thresholds, ceac_1y, linewidth=2, label='1-year base case')
-    ax4.plot(wtp_thresholds, ceac_10y, linewidth=2, linestyle='--', label='10-year scenario')
+    ax4.plot(wtp_thresholds, ceac_180d, linewidth=2, label='180-day base case')
+    ax4.plot(wtp_thresholds, ceac_365d, linewidth=2, linestyle='--', label='1-year scenario')
     ax4.axvline(x=50000, color='red', linestyle='--', alpha=0.5, label='US threshold: $50K')
     ax4.axvline(x=100000, color='orange', linestyle='--', alpha=0.5, label='US threshold: $100K')
     ax4.set_xlabel('Willingness-to-Pay ($/QALY)')
@@ -273,28 +272,28 @@ def generate_plots_corrected(horizon_365d_results, horizon_3650d_results):
     
     # ============ ROW 3: TORNADO (INB-based, not ICER) ============
     ax5 = fig.add_subplot(gs[2, :])
-    tornado_365, base_inb_365 = one_way_sensitivity_analysis_inb(horizon_days=365, wtp=WTP_THRESHOLD)
+    tornado_180, base_inb_180 = one_way_sensitivity_analysis_inb(horizon_days=180, wtp=WTP_THRESHOLD)
     
-    y_pos = np.arange(len(tornado_365))
-    ranges_low = tornado_365['Base INB'].values - tornado_365['Low INB'].values
-    ranges_high = tornado_365['High INB'].values - tornado_365['Base INB'].values
+    y_pos = np.arange(len(tornado_180))
+    ranges_low = tornado_180['Base INB'].values - tornado_180['Low INB'].values
+    ranges_high = tornado_180['High INB'].values - tornado_180['Base INB'].values
     
-    ax5.barh(y_pos, ranges_low, left=tornado_365['Low INB'].values, 
+    ax5.barh(y_pos, ranges_low, left=tornado_180['Low INB'].values, 
              align='center', alpha=0.7, label='Low value')
-    ax5.barh(y_pos, ranges_high, left=tornado_365['Base INB'].values, 
+    ax5.barh(y_pos, ranges_high, left=tornado_180['Base INB'].values, 
              align='center', alpha=0.5, label='High value')
-    ax5.axvline(x=base_inb_365, color='red', linestyle='--', linewidth=2, label=f'Base INB: ${base_inb_365:,.0f}')
+    ax5.axvline(x=base_inb_180, color='red', linestyle='--', linewidth=2, label=f'Base INB: ${base_inb_180:,.0f}')
     ax5.set_yticks(y_pos)
-    ax5.set_yticklabels(tornado_365['Parameter'].values)
+    ax5.set_yticklabels(tornado_180['Parameter'].values)
     ax5.set_xlabel('Incremental Net Benefit ($)')
-    ax5.set_title('Tornado Diagram - Top 10 Parameters (±25%) - 1 Year [INB-based, NOT ICER]')
+    ax5.set_title('Tornado Diagram - Top 10 Parameters (±25%) - 180 Days [INB-based, NOT ICER]')
     ax5.grid(True, alpha=0.3, axis='x')
     ax5.legend()
     
     plt.savefig('sensitivity_analysis_CORRECTED.png', dpi=300, bbox_inches='tight')
     print("✓ Publication-ready figure saved: sensitivity_analysis_CORRECTED.png")
     
-    return tornado_365
+    return tornado_180
 
 
 def generate_plots(horizon_days=180):
@@ -367,29 +366,29 @@ if __name__ == "__main__":
     print("PSA & SENSITIVITY ANALYSIS (CORRECTED FOR PUBLICATION)")
     print("=" * 80)
     
-    print("\n📊 Running PSA (1,000 iterations): 1-year base case...")
+    print("\n📊 Running PSA (1,000 iterations): 180-day base case...")
+    psa_180d = probabilistic_sensitivity_analysis(n_iterations=1000, horizon_days=180, wtp=WTP_THRESHOLD)
+    
+    print("📊 Running PSA (1,000 iterations): 1-year scenario...")
     psa_365d = probabilistic_sensitivity_analysis(n_iterations=1000, horizon_days=365, wtp=WTP_THRESHOLD)
     
-    print("📊 Running PSA (1,000 iterations): 10-year scenario...")
-    psa_3650d = probabilistic_sensitivity_analysis(n_iterations=1000, horizon_days=3650, wtp=WTP_THRESHOLD)
-    
     print("\n📈 Generating publication-ready figures...")
-    tornado_results = generate_plots_corrected(psa_365d, psa_3650d)
+    tornado_results = generate_plots_corrected(psa_180d, psa_365d)
     
     print("\n" + "=" * 80)
-    print("📊 RESULTS SUMMARY (1-YEAR BASE CASE)")
+    print("📊 RESULTS SUMMARY (180-DAY BASE CASE)")
     print("=" * 80)
-    prob_ce = np.mean(np.array(psa_365d['inb']) > 0)
-    mean_inb = np.mean(psa_365d['inb'])
-    median_inb = np.median(psa_365d['inb'])
+    prob_ce = np.mean(np.array(psa_180d['inb']) > 0)
+    mean_inb = np.mean(psa_180d['inb'])
+    median_inb = np.median(psa_180d['inb'])
     
     print(f"Mean INB at $50K WTP: ${mean_inb:,.0f}")
     print(f"Median INB: ${median_inb:,.0f}")
     print(f"Probability pEEG is cost-effective: {prob_ce:.1%}")
-    print(f"\nPEEG dominance (lower cost + more QALYs): {np.mean(np.array(psa_365d['cost_diff']) < 0) * 100:.1f}%")
+    print(f"\nPEEG dominance (lower cost + more QALYs): {np.mean(np.array(psa_180d['cost_diff']) < 0) * 100:.1f}%")
     
     print("\n" + "=" * 80)
-    print("📈 TOP 10 TORNADO PARAMETERS (1-year, INB-based)")
+    print("📈 TOP 10 TORNADO PARAMETERS (180-day, INB-based)")
     print("=" * 80)
     print(tornado_results.to_string(index=False))
     

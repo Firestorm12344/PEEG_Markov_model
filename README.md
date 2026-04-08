@@ -76,9 +76,10 @@ Utilities are combined with cycle-specific durations (in days) to compute QALYs:
 1. **Delirium is acute:** Assigned at time zero; does not persist as a chronic state beyond the initial discharge decision.
 2. **Readmission is temporary:** Patients who are readmitted return to home after the cycle (tunnel state model).
 3. **Delirium effects are persistent:** Delirium history affects rehab disposition, mortality, and readmission risk for the full 180 days.
-4. **Cycle-specific probabilities:** All multi-year probabilities are converted via daily hazard rates to respect cycle lengths (weekly early, monthly late).
-5. **Discounting:** Applied per-cycle at the cycle midpoint, using daily compounding.
-6. **Hospital perspective:** No indirect costs; payer is the hospital/health system.
+4. **365-day scenario handling:** Mortality switches to background annual risk after day 180, and readmission risk is not extrapolated beyond the supported 180-day evidence window.
+5. **Cycle-specific probabilities:** All multi-period probabilities are converted via daily hazard rates to respect cycle lengths (weekly early, monthly late).
+6. **Discounting:** Applied per-cycle at the cycle midpoint, using daily compounding.
+7. **Hospital perspective:** No indirect costs; payer is the hospital/health system.
 
 ---
 
@@ -101,16 +102,17 @@ Columns:
 ## Sensitivity Analysis
 
 ### One-Way Sensitivity (Tornado)
-Varies each parameter by ±25% and reports the resulting range in ICER (incremental cost-effectiveness ratio).
+Varies each parameter by ±25% and reports the resulting range in INB (incremental net benefit), which is more stable than ICER.
 
 ### Probabilistic Sensitivity Analysis (PSA)
 Samples 1,000 parameter sets from distributions (10% coefficient of variation for all parameters):
-- **Probabilities & Utilities:** Normal distribution, bounded [0, 1]
+- **Probabilities & Utilities:** Beta distribution, bounded [0, 1]
 - **Costs:** Lognormal distribution (natural skew for healthcare costs)
+- **RRs and ORs:** Lognormal distribution (positive, right-skewed)
 
 Outputs:
 - Cost-effectiveness plane (cost difference vs QALY difference)
-- ICER distribution
+- INB distribution
 - Cost-effectiveness acceptability curve (CEAC) at willingness-to-pay thresholds ($50K, $100K)
 
 ---
@@ -137,6 +139,7 @@ Check the CE plane:
 - **model2_corrected_markov.py**: Main model code (180d base + 365d scenario)
 - **model2_corrected_outputs_180d_1y.csv**: Model results (costs, QALYs, outcomes)
 - **sensitivity_analysis.py**: One-way, PSA, and CE figures
+- **sensitivity_analysis_CORRECTED.png**: Combined 180-day/365-day publication-style sensitivity figure
 - **sensitivity_analysis_180d.png** and **sensitivity_analysis_365d.png**: Plots
 - **README.md** (this file): Documentation
 - **CHANGELOG.md**: History of model modifications
@@ -168,7 +171,7 @@ Check the CE plane:
 ## Limitations & Future Directions
 
 ### Current Limitations
-1. **No long-term structure:** Model ends at 180 days; no chronic institutionalization or recurrent delirium risk beyond this.
+1. **No long-term structure:** Model supports a 180-day base case and an optional 365-day scenario only; no expanded chronic institutionalization or recurrent delirium risk beyond 1 year.
 2. **Readmission modeled simply:** Assumes single readmission tunnel state; does not capture multiplicity or cascade effects.
 3. **Delirium is binary:** "Acute" only; does not model subsyndromal or prolonged delirium subgroups.
 4. **No adverse events modeled:** pEEG itself has no complications; focuses only on delirium reduction.
