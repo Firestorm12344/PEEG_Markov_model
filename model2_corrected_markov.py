@@ -27,10 +27,6 @@ KEY ASSUMPTIONS:
   - All multi-year probabilities converted to daily hazards, then to cycle-specific probs
   - Hospital perspective: costs include delirium mgmt ($8,286), pEEG ($120), readmission ($5,000)
   - Utilities: QALYs accumulated = utility × (cycle_days / 365.0), discounted per cycle
-  - Rehab patients can discharge to home (10% monthly probability)
-  - Readmissions continue beyond 180 days with same hazard
-  - NOTE: Long-term horizons (5y, 10y) use extrapolation with background mortality; utilities and transitions may not be fully validated for long-term use.
-
 INTERVENTIONS COMPARED:
   - Usual anesthesia: baseline delirium risk 20.34%, no intervention cost
   - pEEG-guided anesthesia: RR 0.81 for delirium (16.48% risk), +$120 cost
@@ -49,7 +45,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
-BASE = {'p_delirium_usual': 0.2034, 'rr_delirium_peeg': 0.81, 'p_mort_180_no_delirium': 0.124, 'or_mort_delirium': 1.69, 'p_rehab_no_delirium': 0.298, 'or_rehab_delirium': 2.8, 'p_readmit_180_no_delirium': 0.36, 'or_readmit_delirium': 1.79, 'cost_delirium_episode': 8286.0, 'peeg_per_case_cost': 120.0, 'cost_readmission': 5000.0, 'u_readmit': 0.2, 'u_month1_post_hip_fracture': 0.46, 'u_home_4mo': 0.65, 'u_rehab_4mo': 0.37, 'annual_background_mortality_after_6m': 0.05, 'annual_discount': 0.03, 'p_discharge_rehab_monthly': 0.1}
+BASE = {'p_delirium_usual': 0.2034, 'rr_delirium_peeg': 0.81, 'p_mort_180_no_delirium': 0.124, 'or_mort_delirium': 1.69, 'p_rehab_no_delirium': 0.298, 'or_rehab_delirium': 2.8, 'p_readmit_180_no_delirium': 0.36, 'or_readmit_delirium': 1.79, 'cost_delirium_episode': 8286.0, 'peeg_per_case_cost': 120.0, 'cost_readmission': 5000.0, 'u_readmit': 0.2, 'u_month1_post_hip_fracture': 0.46, 'u_home_4mo': 0.65, 'u_rehab_4mo': 0.37, 'annual_background_mortality_after_6m': 0.05, 'annual_discount': 0.03}
 
 STATES = ['acute_no_delirium', 'acute_delirium', 'home_no_delirium_history', 'home_delirium_history', 'rehab_no_delirium_history', 'rehab_delirium_history', 'readmitted', 'death']
 IDX = {s: i for i, s in enumerate(STATES)}
@@ -219,9 +215,6 @@ def run_markov(strategy: str, horizon_days: int, params: dict) -> dict:
             p_bg_cycle = 1 - (1 - p["annual_background_mortality_after_6m"]) ** (post_followup_cycle_days / 365.0)
             p_mort_cycle_nd = combine_sequential_probabilities(p_mort_cycle_nd, p_bg_cycle)
             p_mort_cycle_d = combine_sequential_probabilities(p_mort_cycle_d, p_bg_cycle)
-            # Readmissions continue with the same hazard
-            p_readmit_cycle_nd = combine_sequential_probabilities(p_readmit_cycle_nd, 1 - math.exp(-p_readmit_daily_nd * post_followup_cycle_days))
-            p_readmit_cycle_d = combine_sequential_probabilities(p_readmit_cycle_d, 1 - math.exp(-p_readmit_daily_d * post_followup_cycle_days))
 
         # First cycle (acute phase): route from acute states to home/rehab
         if cycle_idx == 0:
@@ -292,20 +285,12 @@ def run_markov(strategy: str, horizon_days: int, params: dict) -> dict:
                 new[IDX["readmitted"]] += readmits
                 new[IDX["death"]] += deaths
                 
-                # Survivors can be discharged to home or stay in rehab
-                p_discharge_cycle = 1 - (1 - p["p_discharge_rehab_monthly"]) ** (cycle_days / 30.44)
-                discharges = survivors * p_discharge_cycle
-                stay_rehab = survivors - discharges
-                new[IDX[state_name]] += stay_rehab
-                home_state = "home_delirium_history" if "delirium" in state_name else "home_no_delirium_history"
-                new[IDX[home_state]] += discharges
+                new[IDX[state_name]] += survivors
                 
                 cycle_readmits += readmits
                 total_readmit += readmits
                 total_deaths += deaths
-                total_qaly += stay_rehab * utility * (cycle_days / 365.0) * discount
-                home_utility = utility_home_by_days(elapsed_days, p)
-                total_qaly += discharges * home_utility * (cycle_days / 365.0) * discount
+                total_qaly += survivors * utility * (cycle_days / 365.0) * discount
             
             # Readmitted state: tunnel state (temporary), reverts to home after one cycle
             # or can have another death event
@@ -341,29 +326,15 @@ def run_markov(strategy: str, horizon_days: int, params: dict) -> dict:
 
 if __name__ == "__main__":
     rows = []
-    horizons = [365, 5*365, 10*365]  # 1, 5, 10 years
-    for horizon_days in horizons:
+    for horizon_days in [180, 365]:
         usual = run_markov("Usual anesthesia", horizon_days, BASE)
         peeg = run_markov("pEEG-guided anesthesia", horizon_days, BASE)
-        increment = {
-            "strategy": "Increment (pEEG - usual)",
-            "horizon_days": horizon_days,
-            "cost_usd_per_patient": peeg["cost_usd_per_patient"] - usual["cost_usd_per_patient"],
-            "qalys_per_patient": peeg["qalys_per_patient"] - usual["qalys_per_patient"],
-            "delirium_cases_per_patient": peeg["delirium_cases_per_patient"] - usual["delirium_cases_per_patient"],
-            "rehab_discharges_per_patient": peeg["rehab_discharges_per_patient"] - usual["rehab_discharges_per_patient"],
-            "deaths_per_patient": peeg["deaths_per_patient"] - usual["deaths_per_patient"],
-            "readmissions_per_patient": peeg["readmissions_per_patient"] - usual["readmissions_per_patient"],
-        }
-        rows.extend([usual, peeg, increment])
+        rows.extend([usual, peeg])
     
     df_results = pd.DataFrame(rows)
-    df_results["Horizon (years)"] = df_results["horizon_days"] / 365
-    df_results = df_results[["Horizon (years)", "strategy", "cost_usd_per_patient", "qalys_per_patient", "delirium_cases_per_patient", "rehab_discharges_per_patient", "deaths_per_patient", "readmissions_per_patient"]]
-    df_results.columns = ["Horizon (years)", "Strategy", "Cost (USD per patient)", "QALYs per patient", "Delirium cases per patient", "Rehab discharges per patient", "Deaths per patient", "Readmissions per patient"]
     print(df_results)
     
     # Save to the repository root so the script works cross-platform.
-    csv_path = "model2_corrected_outputs_1y_5y_10y.csv"
+    csv_path = "model2_corrected_outputs_180d_1y.csv"
     df_results.to_csv(csv_path, index=False)
     print(f"\nResults saved to: {csv_path}")
